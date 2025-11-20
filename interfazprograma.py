@@ -1,17 +1,16 @@
-# streamlit_app_final.py
+
+# streamlit_app_final.py (renamed fixed for usuario: interfazprograma_fixed.py)
 """
-Streamlit — Analizador de corrosión (versión final solicitada)
+Streamlit — Analizador de corrosión (versión final corregida)
 
-Pega este archivo y ejecútalo:
-    streamlit run streamlit_app_final.py
+Instrucciones:
+    streamlit run interfazprograma_fixed.py
 
-Características:
-- Título: "Analizador de corrosión"
-- Segmentos coloreados y rellenados (como en tu código original)
-- Reprocesado automático al cambiar parámetros
-- Tabla definitiva con medias por segmento (solo si subes archivo de proceso)
-- Guardado / borrado de procesados (pickle + imagen)
-- Eliminación/Recálculo de segmentos actualiza la UI inmediatamente
+Este archivo es una versión limpiada y funcional del script que subiste:
+- Elimina bloques duplicados que causaban NameError en corr_path
+- Añade manejo robusto de archivos subidos y procesos temporales
+- Usa fallbacks si no hay funciones del usuario
+- Mantiene la UI y funcionalidades principales
 """
 
 from pathlib import Path
@@ -24,36 +23,34 @@ from datetime import datetime
 
 import pandas as pd
 import numpy as np
-# --- BLOQUE DE COLORES + LOGO CON BORDE DIFUMINADO (VERSIÓN SIMPLE Y QUE NO FALLA) ---
 import streamlit as st
 from PIL import Image, ImageFilter
 
-# ==== PALETA CORPORATIVA SUAVE (REPSOL PERO SIN CONTRASTE FUERTE) ====
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+# Configuración básica y estilo
+st.set_page_config(page_title="Analizador de corrosión", layout="wide")
+st.title("Analizador de corrosión")
+
 st.markdown(
     """
     <style>
     .stApp {
-        background-color: #1F2D3D; /* Azul suave */
+        background-color: #1F2D3D;
     }
-
     h1, h2, h3, h4, h5, h6 {
-        color: #D98B3B !important; /* Naranja suave corporativo */
+        color: #D98B3B !important;
     }
-
-    /* Texto general más visible */
     .css-18e3th9, .css-16idsys, .css-10trblm {
         color: #E4E4E4 !important;
     }
-
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #1F2D3D;
     }
     section[data-testid="stSidebar"] * {
         color: #C7C7C7 !important;
     }
-
-    /* Botones */
     .stButton>button {
         background-color: #D98B3B;
         color: white;
@@ -64,52 +61,28 @@ st.markdown(
         background-color: #b57830;
         color: white;
     }
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-from PIL import Image, ImageFilter
-
+# intentar cargar logo
 try:
-    # Cargar logo con alfa
     logo_original = Image.open("logo_repsol.png").convert("RGBA")
-
-    # Parámetros del halo
     blur_radius = 20
-    padding = blur_radius * 5 # espacio extra para que el blur no se corte
-
-    # Crear lienzo más grande
+    padding = blur_radius * 5
     new_size = (logo_original.width + padding, logo_original.height + padding)
     final_logo = Image.new("RGBA", new_size, (0, 0, 0, 0))
-
-    # Centrar el logo en el lienzo
     center_x = (new_size[0] - logo_original.width) // 2
     center_y = (new_size[1] - logo_original.height) // 2
     final_logo.paste(logo_original, (center_x, center_y), logo_original)
-
-    # Crear máscara del logo centrado
     mask = final_logo.split()[3]
-
-    # Crear halo blanco difuminado
     white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
     white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
-
-    # Combinar halo + logo
     final_logo = Image.alpha_composite(white_halo, final_logo)
-
     st.image(final_logo, width=200)
-
 except Exception:
-    st.write("⚠️ No se encontró 'logo_repsol.png'.")
-
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-
-# Configuración de página
-st.set_page_config(page_title="Analizador de corrosión", layout="wide")
-st.title("Analizador de corrosión")
+    st.write("⚠️ No se encontró 'logo_repsol.png' o no se pudo procesarlo.")
 
 HERE = Path.cwd()
 
@@ -118,7 +91,7 @@ def load_user_module_from_folder(folder: Path):
     py_files = list(folder.glob("*.py"))
     if not py_files:
         return None, None
-    candidates = [f for f in py_files if "intento" in f.stem.lower()]
+    candidates = [f for f in py_files if "intento" in f.stem.lower() or "interfaz" in f.stem.lower()]
     if not candidates:
         candidates = sorted(py_files, key=lambda x: x.stat().st_size, reverse=True)
     chosen = candidates[0]
@@ -145,14 +118,12 @@ uploaded_proc = st.sidebar.file_uploader("Archivo de proceso (.xlsx) — opciona
 
 st.sidebar.markdown("---")
 
-# Parámetros que disparan recalculo automático
-# --- Controles con precisión de hasta el cuarto/quinto decimal ---
 umbral_factor = st.sidebar.slider(
     "Umbral factor",
     min_value=1.0000,
     max_value=1.1000,
     value=1.0200,
-    step=0.0001,  # paso fino: cuarta cifra decimal
+    step=0.0001,
     format="%.4f",
     key="umbral_factor"
 )
@@ -161,8 +132,8 @@ umbral = st.sidebar.number_input(
     "Umbral (ej: 0.0005)",
     min_value=1e-9,
     value=0.0005,
-    step=0.0001,     # paso fino también
-    format="%.6f",   # hasta 6 decimales visibles
+    step=0.0001,
+    format="%.6f",
     key="umbral"
 )
 min_dias_seg = st.sidebar.number_input("Mínimo días por segmento", min_value=1, max_value=3650, value=10, key="min_dias_seg")
@@ -184,10 +155,9 @@ if user_module is not None:
 else:
     st.sidebar.info("No se encontró script de usuario en la carpeta (se usarán fallbacks).")
 
-# -------------------- Caching lectura Excel (solo tipos serializables) --------------------
+# -------------------- Caching lectura Excel --------------------
 @st.cache_data(show_spinner=False)
 def cached_read_excel_sheets(uploaded_file):
-    """Devuelve la lista de hojas del Excel."""
     if uploaded_file is None:
         return []
     try:
@@ -198,7 +168,6 @@ def cached_read_excel_sheets(uploaded_file):
 
 @st.cache_data(show_spinner=False)
 def cached_read_excel_sheet_df(uploaded_file, sheet_name):
-    """Devuelve un DataFrame de la hoja (serializable)."""
     if uploaded_file is None:
         return pd.DataFrame()
     try:
@@ -208,8 +177,7 @@ def cached_read_excel_sheet_df(uploaded_file, sheet_name):
     except Exception:
         return pd.DataFrame()
 
-# -------------------- Funciones fallback tomadas/adaptadas de 'intento de mezcla.py' --------------------
-# detect_columns fallback
+# -------------------- Funciones fallback --------------------
 def detect_columns_fallback(df):
     col_fecha = None
     col_espesor = None
@@ -234,7 +202,6 @@ def detect_columns_fallback(df):
             if pd.api.types.is_numeric_dtype(df[c]):
                 col_espesor = c
                 break
-    # fallback extreme try
     if col_fecha is None or col_espesor is None:
         for c in df.columns:
             try:
@@ -258,7 +225,6 @@ def detect_columns_fallback(df):
                 break
     return col_fecha, col_espesor
 
-# detectar_segmentos fallback (adapted)
 def detectar_segmentos_fallback(df_original, umbral_factor=1.02, umbral=0.0005, min_dias=10, wl_max=51, wl_min=5):
     df = df_original.copy()
     try:
@@ -309,12 +275,10 @@ def detectar_segmentos_fallback(df_original, umbral_factor=1.02, umbral=0.0005, 
         segmentos_raw.append({"ini": ini, "fin": fin, "fecha_ini": fecha_ini, "fecha_fin": fecha_fin, "delta_dias": delta_dias, "velocidad": velocidad})
     return df_filtrado, np.asarray(y_suave), cambios, segmentos_raw
 
-# extraer_segmentos_validos fallback
 def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_proc=None, vars_proceso=None, min_dias=10):
     segmentos_validos = []
     descartados = []
 
-    # --- Detectar automáticamente la columna de fecha en df_proc ---
     fecha_col = None
     if df_proc is not None and not df_proc.empty:
         for c in df_proc.columns:
@@ -334,7 +298,6 @@ def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_p
         delta_dias = seg["delta_dias"]
         velocidad = seg["velocidad"]
 
-        # --- Validaciones básicas ---
         if pd.isna(fecha_ini) or pd.isna(fecha_fin):
             seg2 = dict(seg); seg2.update({"motivo": "Fechas inválidas", "estado": "descartado"})
             descartados.append(seg2)
@@ -348,7 +311,6 @@ def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_p
             descartados.append(seg2)
             continue
 
-        # --- Calcular medias de variables de proceso en el rango de fechas ---
         medias = pd.Series(dtype=float)
         if df_proc is not None and not df_proc.empty and fecha_col in df_proc.columns:
             try:
@@ -360,7 +322,6 @@ def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_p
             except Exception:
                 medias = pd.Series(dtype=float)
 
-        # --- Calcular duración en años/meses ---
         dur_days = delta_dias
         anios = dur_days // 365
         meses = (dur_days % 365) // 30
@@ -384,13 +345,11 @@ def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_p
 
     return segmentos_validos, descartados
 
-
-# dibujar_grafica_completa fallback (con rellenos y etiquetas)
 def dibujar_grafica_completa_fallback(df_filtrado, y_suave, segmentos_validos, descartados, segmentos_eliminados_idx, titulo="Velocidad de corrosión", figsize=(14,10), show=False):
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     fig.patch.set_facecolor("white"); ax.set_facecolor("white"); ax.grid(True, alpha=0.35)
     try:
-        ax.plot(pd.to_datetime(df_filtrado["Sent Time"]), df_filtrado["UT measurement (mm)"].values, color="gray", alpha=0.25, linewidth=1.2, label="Mediciones")
+        ax.plot(pd.to_datetime(df_filtrado["Sent Time"]), df_filtrado["UT measurement (mm)"].values, alpha=0.25, linewidth=1.2, label="Mediciones")
     except Exception:
         pass
     if y_suave is None:
@@ -398,20 +357,19 @@ def dibujar_grafica_completa_fallback(df_filtrado, y_suave, segmentos_validos, d
     ymax, ymin = float(np.max(y_suave)), float(np.min(y_suave)); altura = ymax - ymin if (ymax - ymin) != 0 else max(abs(ymax), 1.0)
     ax.set_ylim(ymin - 0.05 * altura, ymax + 0.2 * altura)
     gris_alpha = 0.35
-    # descartados gris
     for d in descartados:
         i, f = d.get("ini",0), d.get("fin",0)
         if i < 0 or f <= i or f > len(y_suave): continue
         try:
-            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], color="gray", alpha=gris_alpha, linewidth=2)
-            ax.fill_between(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], ymin, color="gray", alpha=gris_alpha)
+            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], alpha=gris_alpha, linewidth=2)
+            ax.fill_between(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], ymin, alpha=gris_alpha)
         except Exception:
             continue
     for (i,f) in segmentos_eliminados_idx:
         if i < 0 or f <= i or f > len(y_suave): continue
         try:
-            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], color="gray", alpha=gris_alpha, linewidth=2)
-            ax.fill_between(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], ymin, color="gray", alpha=gris_alpha)
+            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], alpha=gris_alpha, linewidth=2)
+            ax.fill_between(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], ymin, alpha=gris_alpha)
         except Exception:
             continue
     validos = [s for s in segmentos_validos if s.get("estado","valido") == "valido"]
@@ -423,7 +381,7 @@ def dibujar_grafica_completa_fallback(df_filtrado, y_suave, segmentos_validos, d
         i, f = int(s["ini"]), int(s["fin"])
         color = colormap((contador - 1) % max(1, colormap.N))
         try:
-            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], color=color, linewidth=2.6, label=f"Segmento {contador}: {s['fecha_ini'].strftime('%Y-%m-%d')} → {s['fecha_fin'].strftime('%Y-%m-%d')}\nDur: {s['anios']}a {s['meses']}m | Vel: {s['vel_abs']:.4f} mm/año")
+            ax.plot(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], color=color, linewidth=2.6, label=f"Segmento {contador}")
             ax.fill_between(pd.to_datetime(df_filtrado["Sent Time"].iloc[i:f]), y_suave[i:f], ymin, color=color, alpha=0.25)
             for fecha in [s["fecha_ini"], s["fecha_fin"]]:
                 ax.axvline(fecha, color="black", linestyle=":", alpha=0.5, zorder=0)
@@ -443,14 +401,9 @@ def dibujar_grafica_completa_fallback(df_filtrado, y_suave, segmentos_validos, d
     except Exception:
         pass
     plt.tight_layout()
-    if show:
-        try:
-            plt.show(block=False)
-        except Exception:
-            plt.show()
     return fig, ax
 
-# Wrapper: preferir funciones del script del usuario si existen
+# Wrappers prefieren funciones del usuario
 def detectar_segmentos_wrapper(df, umbral_factor_val, umbral_val):
     fn = safe_get("detectar_segmentos")
     if fn is not None:
@@ -478,7 +431,6 @@ def dibujar_grafica_completa_wrapper(df_filtrado, y_suave, segmentos_validos, de
             pass
     return dibujar_grafica_completa_fallback(df_filtrado, y_suave, segmentos_validos, descartados, segmentos_eliminados_idx, titulo=titulo, figsize=figsize, show=show)
 
-# recalcular local wrapper: preferir user fn
 def recalcular_segmento_local_wrapper(df_filtrado, y_suave, segmento, df_proc, vars_proceso, nuevo_umbral, nuevo_umbral_factor=None, min_dias=10):
     fn = safe_get("recalcular_segmento_local")
     if fn is not None:
@@ -488,7 +440,6 @@ def recalcular_segmento_local_wrapper(df_filtrado, y_suave, segmento, df_proc, v
             pass
     return recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, vars_proceso, nuevo_umbral, nuevo_umbral_factor, min_dias)
 
-# fallback recalcular_segmento_local (basado en tu original)
 def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, vars_proceso,
                                        nuevo_umbral, nuevo_umbral_factor=None, min_dias=10,
                                        wl_max=51, wl_min=5):
@@ -497,7 +448,6 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
     if df_local.empty or len(df_local) < 5:
         return [], [{"ini": ini_g, "fin": fin_g, "motivo": "Datos insuficientes local", "estado": "descartado"}]
 
-    # --- Filtro local opcional ---
     if nuevo_umbral_factor is not None:
         n_ref_local = min(10, len(df_local))
         grosor_ref_local = df_local["UT measurement (mm)"].iloc[:n_ref_local].mean()
@@ -506,7 +456,6 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
         if df_local.empty or len(df_local) < 5:
             return [], [{"ini": ini_g, "fin": fin_g, "motivo": "Filtro local eliminó casi todo", "estado": "descartado"}]
 
-    # --- Suavizado local ---
     y_local = df_local["UT measurement (mm)"].values
     wl = min(wl_max, (len(y_local) - 1) if (len(y_local) % 2 == 0) else len(y_local))
     wl = max(wl_min, wl)
@@ -548,15 +497,12 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
     nuevos_validos_global = []
     nuevos_descartados_global = []
 
-    # --- Detectar columna de fecha en df_proc (automático y robusto) ---
     fecha_col = None
     if df_proc is not None and not df_proc.empty:
         for c in df_proc.columns:
             if str(c).strip().lower().startswith("fecha"):
                 fecha_col = c
                 break
-
-        # Si no la encuentra, intenta detectar la primera columna convertible a datetime
         if fecha_col is None:
             for c in df_proc.columns:
                 try:
@@ -576,7 +522,6 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
                 "estado": "descartado"
             })
             continue
-
         if s["delta_dias"] <= 0 or s["delta_dias"] < min_dias:
             nuevos_descartados_global.append({
                 "ini": ini_g + s.get("ini", 0),
@@ -585,7 +530,6 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
                 "estado": "descartado"
             })
             continue
-
         if s["velocidad"] is None or (not np.isfinite(s["velocidad"])) or s["velocidad"] >= 0:
             nuevos_descartados_global.append({
                 "ini": ini_g + s.get("ini", 0),
@@ -595,7 +539,6 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
             })
             continue
 
-        # --- Calcular medias del proceso dentro del rango de fechas del segmento ---
         medias = pd.Series(dtype=float)
         if df_proc is not None and not df_proc.empty and fecha_col is not None:
             try:
@@ -631,8 +574,10 @@ def recalcular_segmento_local_fallback(df_filtrado, y_suave, segmento, df_proc, 
 # -------------------- Session storage --------------------
 if "processed_sheets" not in st.session_state:
     st.session_state["processed_sheets"] = {}
+
 # -------------------- Pestañas UI --------------------
 tabs = st.tabs(["Procesar hoja", "Combinar hojas", "Revisión / Guardado"])
+
 # -------------------- Cargar y preparar datos de proceso --------------------
 df_proc = None
 vars_proceso = []
@@ -640,25 +585,20 @@ vars_proceso = []
 if uploaded_proc is not None:
     cargar_datos_proceso_fn = safe_get("cargar_datos_proceso")
     try:
-        import tempfile
-        import pandas as pd
-
         # Guardar archivo subido temporalmente
         if hasattr(uploaded_proc, "name"):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                tmp.write(uploaded_corr.getbuffer())
-                tmp_path = tmp.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_proc:
+                tmp_proc.write(uploaded_proc.getbuffer())
+                tmp_proc_path = tmp_proc.name
         else:
-            tmp_path = uploaded_proc
+            tmp_proc_path = uploaded_proc
 
-        # Usar la función personalizada del script base si existe
         if cargar_datos_proceso_fn is not None:
-            df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_path)
+            df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_proc_path)
         else:
-            df_proc = pd.read_excel(tmp_path)
+            df_proc = pd.read_excel(tmp_proc_path)
             vars_proceso = [c for c in df_proc.columns if "fecha" not in c.lower()]
 
-        # --- Normalizar columna de fecha ---
         fecha_col = None
         for c in df_proc.columns:
             if any(k in str(c).lower() for k in ["fecha", "date", "time", "sent"]):
@@ -672,14 +612,12 @@ if uploaded_proc is not None:
         df_proc["Fecha"] = pd.to_datetime(df_proc["Fecha"], errors="coerce")
         df_proc = df_proc.dropna(subset=["Fecha"]).sort_values("Fecha").reset_index(drop=True)
 
-        # Convertir otras columnas a numéricas
         for c in df_proc.columns:
             if c != "Fecha":
                 df_proc[c] = pd.to_numeric(df_proc[c], errors="coerce")
 
         vars_proceso = [c for c in df_proc.columns if c != "Fecha"]
 
-        # Guardar en sesión para que el wrapper lo use
         st.session_state["df_proc"] = df_proc
         st.session_state["vars_proceso"] = vars_proceso
 
@@ -690,18 +628,15 @@ if uploaded_proc is not None:
 else:
     st.sidebar.info("Sube un archivo de datos de proceso (.xlsx) para calcular medias.")
 
-# -------------------- TAB 1: Procesar hoja (automático) --------------------
+# -------------------- TAB 1: Procesar hoja --------------------
 with tabs[0]:
     st.header("Procesamiento de hoja")
 
     if uploaded_corr is None:
         st.info("Sube el archivo de corrosión en la barra lateral para comenzar.")
     else:
-        # Crear archivo temporal desde el archivo subido
-        import tempfile
-        
+        # BLOQUE ÚNICO: crear archivo temporal y leer hojas
         corr_path = None
-        
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 tmp.write(uploaded_corr.getbuffer())
@@ -709,8 +644,7 @@ with tabs[0]:
         except Exception as e:
             st.error(f"No se pudo crear archivo temporal: {e}")
             corr_path = None
-        
-        # Leer hojas del Excel
+
         hojas = []
         if corr_path is not None:
             try:
@@ -719,12 +653,12 @@ with tabs[0]:
             except Exception as e:
                 st.error(f"No se pudieron leer las hojas del archivo: {e}")
                 hojas = []
-        
+
         if not hojas:
             st.warning("No se encontraron hojas en el archivo subido.")
         else:
             hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="hoja_sel")
-        
+
             try:
                 df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
                 df_original.columns = [str(c) for c in df_original.columns]
@@ -733,72 +667,7 @@ with tabs[0]:
                 st.error(f"No se pudo leer la hoja seleccionada: {e}")
                 df_original = pd.DataFrame()
 
-# --- Crear archivo temporal a partir del archivo subido (solo una vez) ---
-        import tempfile
-        
-        corr_path = None
-        
-    
-    # --- Leer hojas del archivo ---
-    hojas = []
-    if corr_path is not None:
-        try:
-            xls_corr = pd.ExcelFile(corr_path)
-            hojas = xls_corr.sheet_names
-        except Exception as e:
-            st.error(f"No se pudieron leer las hojas del archivo: {e}")
-            hojas = []
-    else:
-        hojas = []
-
-        if not hojas:
-            st.warning("No se encontraron hojas en el archivo subido.")
-        else:
-            hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="hoja_sel")
-
-            # Y aquí también debes usar corr_path
-            df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
-            df_original.columns = [str(c) for c in df_original.columns]
-
-            st.success(f"Hoja cargada: {hoja_sel} — filas: {len(df_original)}")
-
-        # --- Crear un archivo temporal físico desde el UploadedFile para que pandas pueda leerlo ---
-        try:
-                corr_path = tmp.name
-        except Exception as e:
-            st.error(f"No se pudo crear archivo temporal: {e}")
-            corr_path = None
-    
-        if corr_path is None:
-            st.error("No se pudo preparar el archivo subido.")
-            hojas = []
-        else:
-            # leer hojas desde el archivo real en disco
-            try:
-                xls_corr = pd.ExcelFile(corr_path)
-                hojas = xls_corr.sheet_names
-            except Exception as e:
-                st.error(f"No se pudieron leer las hojas del archivo: {e}")
-                hojas = []
-
-    if not hojas:
-        st.warning("No se encontraron hojas en el archivo subido.")
-    else:
-        hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="hoja_sel")
-
-        # Cargar la hoja seleccionada desde el archivo temporal
-        try:
-            df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
-            df_original.columns = [str(c) for c in df_original.columns]
-            st.success(f"Hoja: {hoja_sel} — filas: {len(df_original)}")
-        except Exception as e:
-            st.error(f"No se pudo leer la hoja seleccionada: {e}")
-            df_original = pd.DataFrame()
-
-            if df_original is None or df_original.empty:
-                st.error("Hoja vacía o no legible.")
-            else:
-                st.success(f"Hoja: {hoja_sel} — filas: {len(df_original)}")
+            if df_original is not None and not df_original.empty:
                 st.write("Los parámetros que cambies a continuación recalcularán automáticamente la gráfica y segmentos.")
                 col1, col2 = st.columns([3,1])
                 with col1:
@@ -807,24 +676,16 @@ with tabs[0]:
                 with col2:
                     st.markdown("Guardar/Exportar")
                     save_auto = st.checkbox("Salvar automáticamente al guardar procesado", value=False, key="chk_save_auto")
+
                 # si tienes archivo de proceso subido, cargarlo (solo sheet 0)
-                df_proc = None; vars_proceso = []
-                if uploaded_proc is not None:
-                    df_proc = cached_read_excel_sheet_df(uploaded_proc, 0)
-                    # --- Detección automática de la columna de fecha en df_proc ---
-                    fecha_col = None
-                    for c in df_proc.columns:
-                        if any(k in str(c).lower() for k in ["fecha", "date", "time", "sent"]):
-                            fecha_col = c
-                            break
-                    if fecha_col is None:
-                        # si no hay ninguna reconocible, usar la primera columna
-                        fecha_col = df_proc.columns[0]
-                    
-                    df_proc[fecha_col] = pd.to_datetime(df_proc[fecha_col], errors="coerce")
-                    vars_proceso = [c for c in df_proc.columns if c != fecha_col]
-                    st.sidebar.success("Archivo de proceso cargado: se usarán medias por segmento si procede.")
-                # re-procesar automáticamente (Streamlit rerun al cambiar inputs)
+                if uploaded_proc is not None and st.session_state.get("df_proc") is not None:
+                    df_proc = st.session_state.get("df_proc")
+                    vars_proceso = st.session_state.get("vars_proceso", [])
+                    st.sidebar.success("Archivo de proceso listo para usar.")
+                else:
+                    df_proc = None
+                    vars_proceso = []
+
                 with st.spinner("Procesando y detectando segmentos..."):
                     df_filtrado, y_suave, cambios, segmentos_raw = detectar_segmentos_wrapper(
                         df_original, umbral_factor, umbral
@@ -832,20 +693,13 @@ with tabs[0]:
                     if df_filtrado is None or y_suave is None:
                         st.error("No se pudieron detectar segmentos. Revisa las columnas (fecha/espesor) o ajusta umbrales.")
                     else:
-                        # 🔹 Obtener el archivo de proceso cargado desde el estado global
                         df_proc = st.session_state.get("df_proc", None)
                         vars_proceso = st.session_state.get("vars_proceso", [])
-                
-                        # 🔹 Extraer segmentos válidos usando también los datos de proceso
                         segmentos_validos, descartados = extraer_segmentos_validos_wrapper(
                             df_filtrado, y_suave, segmentos_raw, df_proc, vars_proceso, min_dias_seg
                         )
-                        # Generar clave única para esta hoja procesada
                         key = f"proc|{uploaded_corr.name}|{hoja_sel}"
 
-                        # ----------------------------------------------
-                        # Guardar/actualizar procesado en session_state sin sobrescribir cambios manuales del usuario
-                        # ----------------------------------------------
                         if key not in st.session_state["processed_sheets"]:
                             st.session_state["processed_sheets"][key] = {
                                 "df_original": df_original,
@@ -856,7 +710,7 @@ with tabs[0]:
                                 "hoja": hoja_sel,
                                 "source_name": uploaded_corr.name,
                                 "saved": False,
-                                "manually_modified": False  # marca para saber si el usuario modificó manualmente
+                                "manually_modified": False
                             }
                         else:
                             existing = st.session_state["processed_sheets"][key]
@@ -867,14 +721,11 @@ with tabs[0]:
                                 "hoja": hoja_sel,
                                 "source_name": uploaded_corr.name
                             })
-                            # Si el usuario NO ha modificado manualmente, actualizar segmentos desde el nuevo procesamiento
                             if not existing.get("manually_modified", False):
                                 existing["segmentos_validos"] = segmentos_validos
                                 existing["descartados"] = descartados
-                            # Dejar intacto existing["segmentos_validos"] si el usuario ya los modificó manualmente
                             st.session_state["processed_sheets"][key] = existing
 
-                        # Mostrar gráfica (con rellenos) — siempre desde session_state para reflejar cambios manuales
                         try:
                             stored = st.session_state["processed_sheets"][key]
                             fig, ax = dibujar_grafica_completa_wrapper(
@@ -886,7 +737,6 @@ with tabs[0]:
                         except Exception as e:
                             st.error(f"Error dibujando gráfica: {e}")
 
-                        # -------------------- Editor de segmentos (eliminar / recalcular) --------------------
                         st.markdown("### Editar segmentos (eliminar / recalcular)")
                         seg_list = []
                         try:
@@ -897,10 +747,8 @@ with tabs[0]:
                         if seg_list:
                             sel_idx = st.selectbox("Selecciona segmento", options=list(range(1, len(seg_list)+1)), format_func=lambda x: seg_list[x-1], key=f"selseg_{key}")
 
-                            # Crear las tres columnas
                             colA, colB, colC = st.columns(3)
 
-                            # --- Eliminar segmento (actualiza session_state y forzar rerun para redibujar la gráfica principal) ---
                             with colA:
                                 if st.button("Eliminar segmento (sesión)", key=f"del_{key}"):
                                     idx0 = sel_idx - 1
@@ -913,34 +761,28 @@ with tabs[0]:
                                             "motivo": "eliminado_manual",
                                             "estado": "descartado"
                                         })
-                                        # marcar que el usuario ha modificado manualmente los segmentos
                                         st.session_state["processed_sheets"][key]["manually_modified"] = True
-
                                         st.success("✅ Segmento eliminado de la sesión.")
-                                        # NO dibujamos la mini-gráfica aquí; forzamos rerun para que la gráfica principal
-                                        # (que se dibuja más arriba leyendo session_state) se actualice con el nuevo estado.
                                         st.rerun()
                                     else:
                                         st.error("Índice de segmento no válido.")
 
-                            # --- Recalcular segmento local ---
                             with colB:
                                 st.markdown("**Recalcular segmento local**")
                                 new_umbral_local = st.number_input(
                                     "Nuevo umbral local",
                                     min_value=1e-12,
                                     value=float(umbral),
-                                    step=0.0001,    # paso fino (cuarto decimal)
+                                    step=0.0001,
                                     format="%.6f",
                                     key=f"umbral_local_{key}"
                                 )
-                                
                                 new_umbral_factor_local = st.number_input(
                                     "Nuevo umbral_factor local",
                                     min_value=1.0,
                                     max_value=2.0,
                                     value=float(umbral_factor),
-                                    step=0.0001,    # paso fino (cuarto decimal)
+                                    step=0.0001,
                                     format="%.4f",
                                     key=f"umbral_factor_local_{key}"
                                 )
@@ -956,27 +798,19 @@ with tabs[0]:
                                                 st.session_state["processed_sheets"][key]["y_suave"],
                                                 seg, df_proc, vars_proceso, new_umbral_local, new_umbral_factor_local, min_dias=min_dias_seg
                                             )
-
-                                            # marcaremos modificación manual y sustituiremos el segmento por los nuevos
                                             st.session_state["processed_sheets"][key]["manually_modified"] = True
-                                            # eliminar el segmento original (por índice) si existía
                                             try:
                                                 st.session_state["processed_sheets"][key]["segmentos_validos"].pop(idx0)
                                             except Exception:
                                                 pass
-
-                                            # añadir descartados y nuevos válidos (ya en índices globales)
                                             for nd in nuevos_descartados:
                                                 st.session_state["processed_sheets"][key]["descartados"].append(nd)
                                             for nv in nuevos_validos:
                                                 st.session_state["processed_sheets"][key]["segmentos_validos"].append(nv)
-
-                                            # ordenar por fecha de inicio para mantener orden en la UI
                                             st.session_state["processed_sheets"][key]["segmentos_validos"] = sorted(
                                                 st.session_state["processed_sheets"][key]["segmentos_validos"],
                                                 key=lambda x: x.get("fecha_ini") or pd.Timestamp.max
                                             )
-
                                             st.success(f"Recalculado: añadidos {len(nuevos_validos)} segmentos (si los hubo). Actualizando vista...")
                                             st.rerun()
                                         except Exception as e:
@@ -984,7 +818,6 @@ with tabs[0]:
                                     else:
                                         st.error("Índice de segmento no válido.")
 
-                            # --- Guardar procesado (usar datos actuales) ---
                             with colC:
                                 if st.button("Guardar procesado (pickle + imagen)", key=f"save_{key}"):
                                     data_now = st.session_state["processed_sheets"][key]
@@ -1001,7 +834,6 @@ with tabs[0]:
                                         }
                                         with open(pkl_path, "wb") as f:
                                             pickle.dump(datos_guardar, f)
-                                        # guardar imagen re-dibujando con wrapper
                                         img_dir = Path.cwd() / "graficos_exportados"
                                         img_dir.mkdir(exist_ok=True)
                                         figpath = img_dir / f"{data_now['source_name']}_{data_now['hoja']}_grafica.png"
@@ -1020,8 +852,6 @@ with tabs[0]:
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"No se pudo guardar: {e}")
-                        else:
-                            st.info("No hay segmentos válidos detectados con los parámetros actuales.")
 
 # -------------------- TAB 2: Combinar hojas --------------------
 with tabs[1]:
@@ -1061,7 +891,6 @@ with tabs[1]:
                     x_plot = x
                     y_plot = yoff
                 fig.add_trace(go.Scatter(x=x_plot, y=y_plot, mode='lines', name=f"{d['hoja']}"))
-                # filled segments (thicker semi-opaque traces)
                 for s in d['segmentos_validos']:
                     if s.get('estado','valido') != 'valido': continue
                     i, f = int(s['ini']), int(s['fin'])
@@ -1122,35 +951,30 @@ with tabs[1]:
 # -------------------- TAB 3: Revisión / Guardado --------------------
 with tabs[2]:
     st.header("Revisión y guardado")
-    # ==================== REVISIÓN Y GRAFICADO DE VARIABLES ====================
     if "processed_sheets" in st.session_state and st.session_state["processed_sheets"]:
         opciones = list(st.session_state["processed_sheets"].keys())
         sel_key = st.selectbox("Selecciona hoja procesada", options=opciones)
         datos = st.session_state["processed_sheets"][sel_key]
         segs = datos.get("segmentos_validos", [])
-        
-        # Crear DataFrame con medias y velocidad
+
         df_medias = pd.DataFrame([
             {"Segmento": i + 1, "Velocidad (mm/año)": s.get("vel_abs"), **(s.get("medias", {}))}
             for i, s in enumerate(segs)
             if s.get("estado") == "valido"
         ])
-    
+
         if df_medias.empty:
             st.info("No hay datos de medias por segmento para mostrar.")
         else:
             st.subheader("Medias por segmento")
             st.dataframe(df_medias)
-    
-            # Selector de variable
+
             columnas_vars = [c for c in df_medias.columns if c not in ["Segmento", "Velocidad (mm/año)"]]
             if columnas_vars:
                 var_sel = st.selectbox("Variable de proceso a graficar:", options=columnas_vars)
                 st.markdown(f"**Gráfica: {var_sel} vs Velocidad (mm/año)**")
-    
-                # Gráfica simple: variable vs velocidad
                 fig, ax = plt.subplots(figsize=(8, 5))
-                ax.scatter(df_medias["Velocidad (mm/año)"], df_medias[var_sel], color="C0", alpha=0.7)
+                ax.scatter(df_medias["Velocidad (mm/año)"], df_medias[var_sel], alpha=0.7)
                 ax.set_xlabel("Velocidad de corrosión (mm/año)")
                 ax.set_ylabel(var_sel)
                 ax.grid(True, alpha=0.4)
@@ -1230,7 +1054,6 @@ with tabs[2]:
                 except Exception as e:
                     st.error(f"Error ejecutando guardar_resultados: {e}")
 
-        # Tabla definitiva: medias por segmento si existen (medias previamente calculadas por extraer_segmentos_validos)
         st.markdown("### Tabla definitiva — medias por segmento (si hay datos de proceso)")
         rows = []
         for idx,s in enumerate(data['segmentos_validos'], start=1):
@@ -1246,29 +1069,15 @@ with tabs[2]:
         if rows:
             df_rows = pd.DataFrame(rows)
             st.dataframe(df_rows)
-        if not df_rows.empty:
+        if 'df_rows' in locals() and not df_rows.empty:
             st.write("### Medias de variables de proceso por segmento")
             columnas_medias = [c for c in df_rows.columns if c not in ['Segmento', 'Inicio', 'Fin', 'Días', 'Vel (mm/año)']]
             if columnas_medias:
                 st.dataframe(df_rows[columnas_medias].round(4))
-                
             else:
                 st.info("No se encontraron variables de proceso en los segmentos.")
         else:
             st.write("No hay segmentos válidos para este procesado.")
-
-# -------------------- Si el usuario subió archivo de proceso, mostrar confirmación en sidebar (ya cargado) --------------------
-if uploaded_proc is not None:
-    try:
-        df_proc_preview = cached_read_excel_sheet_df(uploaded_proc, sheet_name=0)
-        if "Fecha" in df_proc_preview.columns:
-            try:
-                df_proc_preview["Fecha"] = pd.to_datetime(df_proc_preview["Fecha"], errors="coerce")
-            except Exception:
-                pass
-        st.sidebar.success("Archivo de proceso cargado (se usarán medias por segmento cuando exista).")
-    except Exception:
-        st.sidebar.error("No se pudo leer el archivo de proceso proporcionado.")
 
 # -------------------- Footer --------------------
 st.markdown("---")
