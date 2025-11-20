@@ -19,6 +19,7 @@ import sys
 import importlib.util
 import pickle
 import io
+import tempfile
 from datetime import datetime
 
 import pandas as pd
@@ -692,15 +693,78 @@ else:
 # -------------------- TAB 1: Procesar hoja (automático) --------------------
 with tabs[0]:
     st.header("Procesamiento de hoja")
+
     if uploaded_corr is None:
         st.info("Sube el archivo de corrosión en la barra lateral para comenzar.")
     else:
-        hojas = cached_read_excel_sheets(uploaded_corr)
+
+        # ⚠️ ESTE ES EL BLOQUE QUE TENÍAS QUE AÑADIR ⚠️
+        import tempfile
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp.write(uploaded_corr.read())
+                corr_path = tmp.name   # ← Este archivo SÍ puede leer pandas
+        except Exception as e:
+            st.error(f"No se pudo crear archivo temporal: {e}")
+            corr_path = None
+
+        # Ahora sí leer las hojas desde corr_path
+        if corr_path is not None:
+            try:
+                xls_corr = pd.ExcelFile(corr_path)
+                hojas = xls_corr.sheet_names
+            except Exception as e:
+                st.error(f"No se pudieron leer las hojas del archivo: {e}")
+                hojas = []
+        else:
+            hojas = []
+
         if not hojas:
-            st.error("No se pudieron leer las hojas del archivo. Verifica el archivo.")
+            st.warning("No se encontraron hojas en el archivo subido.")
         else:
             hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="hoja_sel")
-            df_original = cached_read_excel_sheet_df(uploaded_corr, hoja_sel)
+
+            # Y aquí también debes usar corr_path
+            df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
+            df_original.columns = [str(c) for c in df_original.columns]
+
+            st.success(f"Hoja cargada: {hoja_sel} — filas: {len(df_original)}")
+
+        # --- Crear un archivo temporal físico desde el UploadedFile para que pandas pueda leerlo ---
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp.write(uploaded_corr.read())
+                corr_path = tmp.name
+        except Exception as e:
+            st.error(f"No se pudo crear archivo temporal: {e}")
+            corr_path = None
+    
+        if corr_path is None:
+            st.error("No se pudo preparar el archivo subido.")
+            hojas = []
+        else:
+            # leer hojas desde el archivo real en disco
+            try:
+                xls_corr = pd.ExcelFile(corr_path)
+                hojas = xls_corr.sheet_names
+            except Exception as e:
+                st.error(f"No se pudieron leer las hojas del archivo: {e}")
+                hojas = []
+
+    if not hojas:
+        st.warning("No se encontraron hojas en el archivo subido.")
+    else:
+        hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="hoja_sel")
+
+        # Cargar la hoja seleccionada desde el archivo temporal
+        try:
+            df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
+            df_original.columns = [str(c) for c in df_original.columns]
+            st.success(f"Hoja: {hoja_sel} — filas: {len(df_original)}")
+        except Exception as e:
+            st.error(f"No se pudo leer la hoja seleccionada: {e}")
+            df_original = pd.DataFrame()
+
             if df_original is None or df_original.empty:
                 st.error("Hoja vacía o no legible.")
             else:
