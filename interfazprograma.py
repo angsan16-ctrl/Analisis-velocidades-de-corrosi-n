@@ -37,30 +37,44 @@ st.markdown("""
 <style>
 
 /* =========================================================
-   0. FONDO AZUL OSCURO (general)
+   0. FONDO GENERAL → BLANCO
    ========================================================= */
 html, body, .block-container, [class*="stApp"] {
-    background-color: #0B1A33 !important;   /* azul oscuro */
-    color: white !important;
+    background-color: #FFFFFF !important;  /* BLANCO */
+    color: #333333 !important;             /* texto gris oscuro */
 }
 
 /* =========================================================
-   1. SELECTBOX, MULTISELECT, SLIDER, INPUT → texto gris oscuro
+   1. TITULOS GRANDES → POR DEFECTO NARANJA
+   ========================================================= */
+h1, h2, h3, h4, h5, h6 {
+    color: #D98B3B !important;     /* naranja Repsol */
+    font-weight: 800 !important;
+}
+
+/* =========================================================
+   2. TITULOS AZUL OSCURO (solo si tú lo marcas con clase)
+   ========================================================= */
+.darkblue-title {
+    color: #0B1A33 !important;     /* azul oscuro */
+    font-weight: 800 !important;
+}
+
+/* =========================================================
+   3. WIDGETS → letra gris oscuro
    ========================================================= */
 .stSelectbox label,
 .stMultiSelect label,
 .stNumberInput label,
 .stSlider label,
 .stTextInput label {
-    color: #333333 !important;   /* gris oscuro */
+    color: #333333 !important;
 }
 
-/* Texto interno dentro de widgets */
 .css-16idsys, .css-1pndypt, .css-1offfwp, .css-1kyxreq {
-    color: #333333 !important; 
+    color: #333333 !important;
 }
 
-/* Inputs y sus cajas */
 .stSelectbox div[data-baseweb="select"],
 .stMultiSelect div[data-baseweb="select"] {
     background-color: white !important;
@@ -68,41 +82,28 @@ html, body, .block-container, [class*="stApp"] {
 }
 
 /* =========================================================
-   2. TITULOS GRANDES (header, subheader) → NARANJA
+   4. TABS → gris / ROJO seleccionada
    ========================================================= */
-h1, h2, h3, h4, h5, h6 {
-    color: #D98B3B !important;       /* naranja Repsol */
-    font-weight: 700 !important;
-}
-
-/* =========================================================
-   3. PESTAÑAS (tabs)
-   - normal -> gris claro
-   - seleccionada -> rojo
-   ========================================================= */
-
-/* Texto de pestañas NO seleccionadas */
 .stTabs [data-baseweb="tab"] p {
-    color: #CCCCCC !important;  
+    color: #666666 !important;   /* gris */
     font-weight: 600 !important;
 }
 
-/* Texto de pestaña seleccionada */
 .stTabs [aria-selected="true"] p {
-    color: red !important;     
+    color: red !important;       /* ROJO al seleccionar */
     font-weight: 700 !important;
 }
 
-/* Fondo de las pestañas */
+/* Fondo de tabs */
 .stTabs [data-baseweb="tab"] {
-    background-color: #0B1A33 !important;   /* fondo azul oscuro */
+    background-color: #FFFFFF !important; /* fondo blanco */
 }
 
 /* =========================================================
-   4. Botones → NARANJAS (igual que antes)
+   5. Botones → NARANJAS
    ========================================================= */
 .stButton>button {
-    background-color: #D98B3B !important; 
+    background-color: #D98B3B !important;
     color: white !important;
     border-radius: 8px;
 }
