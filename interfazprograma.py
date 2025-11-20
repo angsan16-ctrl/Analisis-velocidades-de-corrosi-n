@@ -65,7 +65,46 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+st.markdown("""
+<style>
 
+/* ------------------------------
+   1. TITULOS DE LAS PESTAÑAS (TAB HEADERS)
+   ------------------------------ */
+.stTabs [data-baseweb="tab"] p {
+    color: white !important;        /* Texto de la pestaña en blanco */
+    font-weight: 600 !important;
+}
+
+/* Cuando la pestaña está seleccionada */
+.stTabs [aria-selected="true"] p {
+    color: white !important;
+    font-weight: 700 !important;
+}
+
+/* ------------------------------
+   2. TEXTO DEL CUERPO (headers, markdown, info general)
+   ------------------------------ */
+h1, h2, h3, h4, h5, h6,
+p, span, label, div, article {
+    color: white !important;
+}
+
+/* ------------------------------
+   3. NO TOCAR: Botones siguen naranjas
+   ------------------------------ */
+.stButton>button {
+    background-color: #D98B3B !important;
+    color: white !important;
+    border-radius: 8px;
+}
+.stButton>button:hover {
+    background-color: #b57830 !important;
+    color: white !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 # intentar cargar logo
 try:
@@ -675,6 +714,8 @@ with tabs[0]:
             except Exception as e:
                 st.error(f"No se pudo leer la hoja seleccionada: {e}")
                 df_original = pd.DataFrame()
+
+            if df_original is not None and not df_original.empty:
                 st.write("Los parámetros que cambies a continuación recalcularán automáticamente la gráfica y segmentos.")
                 col1, col2 = st.columns([3,1])
                 with col1:
