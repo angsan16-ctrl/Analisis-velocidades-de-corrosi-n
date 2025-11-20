@@ -646,7 +646,7 @@ if uploaded_proc is not None:
         # Guardar archivo subido temporalmente
         if hasattr(uploaded_proc, "name"):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                tmp.write(uploaded_proc.read())
+                tmp.write(uploaded_corr.getbuffer())
                 tmp_path = tmp.name
         else:
             tmp_path = uploaded_proc
@@ -693,7 +693,6 @@ else:
 # -------------------- TAB 1: Procesar hoja (automático) --------------------
 with tabs[0]:
     st.header("Procesamiento de hoja")
-    hojas = []
 
     if uploaded_corr is None:
         st.info("Sube el archivo de corrosión en la barra lateral para comenzar.")
@@ -702,8 +701,6 @@ with tabs[0]:
         # ⚠️ ESTE ES EL BLOQUE QUE TENÍAS QUE AÑADIR ⚠️
         import tempfile
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                tmp.write(uploaded_corr.read())
                 corr_path = tmp.name   # ← Este archivo SÍ puede leer pandas
         except Exception as e:
             st.error(f"No se pudo crear archivo temporal: {e}")
@@ -733,8 +730,6 @@ with tabs[0]:
 
         # --- Crear un archivo temporal físico desde el UploadedFile para que pandas pueda leerlo ---
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                tmp.write(uploaded_corr.read())
                 corr_path = tmp.name
         except Exception as e:
             st.error(f"No se pudo crear archivo temporal: {e}")
