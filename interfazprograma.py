@@ -752,12 +752,9 @@ with tabs[0]:
                     df_proc = None
                     vars_proceso = []
 
-              # Primero definimos una función que encapsule tu proceso
-                    def procesar_segmentos():
-                        return detectar_segmentos_wrapper(df_original, umbral_factor, umbral)
-                    
-                    # Luego llamamos a run_with_loading con tu GIF
-                    df_filtrado, y_suave, cambios, segmentos_raw = run_with_loading(procesar_segmentos)
+                    df_filtrado, y_suave, cambios, segmentos_raw = run_with_loading(
+                        lambda: detectar_segmentos_wrapper(df_original, umbral_factor, umbral)
+                    )
 
                     if df_filtrado is None or y_suave is None:
                         st.error("No se pudieron detectar segmentos. Revisa las columnas (fecha/espesor) o ajusta umbrales.")
