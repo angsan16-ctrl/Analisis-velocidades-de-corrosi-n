@@ -29,31 +29,6 @@ from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# Carga segura de la función zip_csvs_to_excel desde el archivo ampliación1.py (soporta nombres con tildes)
-zip_csvs_to_excel = None
-possible_paths = [Path("ampliación1.py"), Path("ampliacion1.py"), Path("ampliacion_1.py")]
-for p in possible_paths:
-    if p.exists():
-        try:
-            spec = importlib.util.spec_from_file_location("mod_ampliacion", str(p))
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            zip_csvs_to_excel = getattr(mod, "zip_csvs_to_excel", None)
-            break
-        except Exception as e:
-            # sigue buscando en el siguiente nombre alternativo
-            zip_csvs_to_excel = None
-
-if zip_csvs_to_excel is None:
-    # Si no se pudo cargar, dejamos la variable en None y mostraremos error al usarla.
-    pass
-
-
-import os
-import tempfile
-import importlib.util
-from pathlib import Path
-
 # Configuración básica y estilo
 st.set_page_config(page_title="Analizador de corrosión", layout="wide")
 st.markdown("<h1 class='darkblue-title'>Analísis de corrosión</h1>", unsafe_allow_html=True)
@@ -187,11 +162,7 @@ def safe_get(fn_name):
 
 # -------------------- Barra lateral: entradas y estado --------------------
 st.sidebar.header("Entradas y parámetros")
-uploaded_corr = st.sidebar.file_uploader(
-    "Archivo de corrosión (.xlsx o .zip)",
-    type=["xlsx", "zip"],
-    key="file_uploader_corr"
-)
+uploaded_corr = st.sidebar.file_uploader("Archivo de corrosión (.xlsx)", type=["xlsx"], key="file_uploader_corr")
 uploaded_proc = st.sidebar.file_uploader("Archivo de proceso (.xlsx) — opcional", type=["xlsx"], key="file_uploader_proc")
 
 st.sidebar.markdown("---")
@@ -709,48 +680,26 @@ else:
 # -------------------- TAB 1: Procesar hoja --------------------
 with tabs[0]:
     st.header("Procesamiento de hoja")
-    
-    corr_path = None
 
     if uploaded_corr is None:
         st.info("Sube el archivo de corrosión en la barra lateral para comenzar.")
     else:
-
+        # ============================================================
+# BLOQUE ÚNICO Y CORRECTO PARA LEER EL EXCEL DE CORROSIÓN
 # ============================================================
-# Aceptar ZIP o Excel como archivo de corrosión
-# ============================================================
-            corr_path = None
-if uploaded_corr is not None:
-
-    # ZIP → convertir a Excel
-    if uploaded_corr.name.lower().endswith(".zip"):
-
-        st.sidebar.info("ZIP detectado → convirtiendo a Excel...")
-
-        # Guardar ZIP temporal
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
-            tmp_zip.write(uploaded_corr.getbuffer())
-            zip_temp_path = tmp_zip.name
-
-        # Crear Excel temporal
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_xlsx:
-            excel_temp_path = tmp_xlsx.name
-
-        # Convertir
+        
+        import tempfile
+        
+        corr_path = None
+        
+        # Crear archivo temporal con el Excel subido
         try:
-            zip_csvs_to_excel(zip_temp_path, excel_temp_path)
-            corr_path = excel_temp_path
-            st.sidebar.success("ZIP convertido correctamente.")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp.write(uploaded_corr.getbuffer())
+                corr_path = tmp.name
         except Exception as e:
-            st.sidebar.error(f"Error convirtiendo ZIP: {e}")
+            st.error(f"No se pudo crear archivo temporal: {e}")
             corr_path = None
-
-    # XLSX → usar directo
-    else:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            tmp.write(uploaded_corr.getbuffer())
-            corr_path = tmp.name
-
         
         # Leer las hojas del archivo
         hojas = []
