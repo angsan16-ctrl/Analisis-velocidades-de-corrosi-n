@@ -1231,16 +1231,16 @@ if st.button("📦 Exportar TODOS los ajustes (gráficas + excels + collages)"):
                 collage.save(collage_path)
                 z.write(collage_path, arcname=f"{nombre_base}/{collage_path.name}")
 
-                zip_buffer.seek(0)
-            
-                st.download_button(
-                    "⬇️ Descargar ZIP completo",
-                    data=zip_buffer,
-                    file_name="export_completo.zip",
-                    mime="application/zip"
-                )
-            
-                st.success("Exportación completa generada.")
+        zip_buffer.seek(0)
+    
+        st.download_button(
+            "⬇️ Descargar ZIP completo",
+            data=zip_buffer,
+            file_name="export_completo.zip",
+            mime="application/zip"
+        )
+    
+        st.success("Exportación completa generada.")
 
 # -------------------- Footer --------------------
 st.markdown("---")
