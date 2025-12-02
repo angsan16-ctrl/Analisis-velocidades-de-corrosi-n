@@ -47,6 +47,7 @@ def leer_archivo(uploaded_file):
 
     elif uploaded_file.name.endswith(".zip"):
         # Leer ZIP con CSVs
+        import zipfile
         with zipfile.ZipFile(uploaded_file) as z:
             for fname in z.namelist():
                 if fname.lower().endswith(".csv"):
@@ -240,9 +241,21 @@ else:
 def cached_read_excel_sheets(uploaded_file):
     if uploaded_file is None:
         return []
+
     try:
-        xls = pd.ExcelFile(uploaded_file)
-        return xls.sheet_names
+        if uploaded_file.name.endswith(".xlsx"):
+            xls = pd.ExcelFile(uploaded_file)
+            return xls.sheet_names
+
+        elif uploaded_file.name.endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(uploaded_file) as z:
+                csv_files = [fname.replace(".csv", "") for fname in z.namelist() if fname.lower().endswith(".csv")]
+            return csv_files
+
+        else:
+            return []
+
     except Exception:
         return []
 
@@ -250,12 +263,29 @@ def cached_read_excel_sheets(uploaded_file):
 def cached_read_excel_sheet_df(uploaded_file, sheet_name):
     if uploaded_file is None:
         return pd.DataFrame()
+
     try:
-        df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
-        df.columns = [str(c) for c in df.columns]
-        return df
+        if uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
+
+        elif uploaded_file.name.endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(uploaded_file) as z:
+                # Buscar el archivo CSV que coincide con sheet_name
+                fname = next((f for f in z.namelist() if f.lower().endswith(".csv") and sheet_name in f), None)
+                if fname:
+                    with z.open(fname) as f:
+                        df = pd.read_csv(f, sep=",")
+                        df.columns = [str(c).strip() for c in df.columns]
+                        return df
+
+        return pd.DataFrame()
+
     except Exception:
         return pd.DataFrame()
+
 
 # -------------------- Funciones fallback --------------------
 def detect_columns_fallback(df):
@@ -731,47 +761,35 @@ with tabs[0]:
         except Exception as e:
             st.error(f"No se pudo crear archivo temporal: {e}")
             corr_path = None
-        
+
         # Leer las hojas del archivo
         hojas = []
-        if corr_path is not None:
+        if uploaded_corr is not None:
             try:
-               
                 hojas_dict = leer_archivo(uploaded_corr)
                 hojas = list(hojas_dict.keys())
-                
+        
                 if not hojas:
                     st.warning("No se encontraron hojas en el archivo subido.")
                 else:
-                    hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key="selectbox_hoja_corr")
+                    hoja_sel = st.selectbox("Selecciona hoja", options=hojas, key=f"selectbox_corr_{uploaded_corr.name}")
                     df_original = hojas_dict[hoja_sel]
-
+                    st.success(f"Hoja cargada: {hoja_sel} — filas: {len(df_original)}")
+        
             except Exception as e:
                 st.error(f"No se pudieron leer las hojas del archivo: {e}")
                 hojas = []
         
-        if not hojas:
-            st.warning("No se encontraron hojas en el archivo subido.")
-        else:
-            hoja_sel = st.selectbox("Selecciona hoja", options=hojas)
-        
-            try:
-                df_original = pd.read_excel(corr_path, sheet_name=hoja_sel)
-                df_original.columns = [str(c) for c in df_original.columns]
-                st.success(f"Hoja cargada: {hoja_sel} — filas: {len(df_original)}")
-            except Exception as e:
-                st.error(f"No se pudo leer la hoja seleccionada: {e}")
-                df_original = pd.DataFrame()
+        if df_original is not None and not df_original.empty:
+            st.write("Los parámetros que cambies a continuación recalcularán automáticamente la gráfica y segmentos.")
+            col1, col2 = st.columns([3,1])
+            with col1:
+                st.markdown("**Parámetros activos**")
+                st.write(f"umbral_factor = {umbral_factor}, umbral = {umbral}, min_dias = {min_dias_seg}")
+            with col2:
+                st.markdown("Guardar/Exportar")
+                save_auto = st.checkbox("Salvar automáticamente al guardar procesado", value=False, key="chk_save_auto")
 
-            if df_original is not None and not df_original.empty:
-                st.write("Los parámetros que cambies a continuación recalcularán automáticamente la gráfica y segmentos.")
-                col1, col2 = st.columns([3,1])
-                with col1:
-                    st.markdown("**Parámetros activos**")
-                    st.write(f"umbral_factor = {umbral_factor}, umbral = {umbral}, min_dias = {min_dias_seg}")
-                with col2:
-                    st.markdown("Guardar/Exportar")
-                    save_auto = st.checkbox("Salvar automáticamente al guardar procesado", value=False, key="chk_save_auto")
 
                 # si tienes archivo de proceso subido, cargarlo (solo sheet 0)
                 if uploaded_proc is not None and st.session_state.get("df_proc") is not None:
