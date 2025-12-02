@@ -29,6 +29,37 @@ from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+
+import zipfile
+import pandas as pd
+import io
+
+def leer_archivo(uploaded_file):
+    hojas_dict = {}
+
+    if uploaded_file.name.endswith(".xlsx"):
+        # Leer Excel
+        xls = pd.ExcelFile(uploaded_file)
+        for sheet in xls.sheet_names:
+            df = pd.read_excel(uploaded_file, sheet_name=sheet)
+            df.columns = [str(c).strip() for c in df.columns]
+            hojas_dict[sheet] = df
+
+    elif uploaded_file.name.endswith(".zip"):
+        # Leer ZIP con CSVs
+        with zipfile.ZipFile(uploaded_file) as z:
+            for fname in z.namelist():
+                if fname.lower().endswith(".csv"):
+                    with z.open(fname) as f:
+                        df = pd.read_csv(f, sep=",")
+                        df.columns = [str(c).strip() for c in df.columns]
+                        hojas_dict[fname.replace(".csv", "")] = df
+
+    else:
+        st.error("Formato no soportado. Usa .xlsx o .zip con CSVs.")
+
+    return hojas_dict
+
 # Configuración básica y estilo
 st.set_page_config(page_title="Analizador de corrosión", layout="wide")
 st.markdown("<h1 class='darkblue-title'>Analísis de corrosión</h1>", unsafe_allow_html=True)
@@ -705,8 +736,16 @@ with tabs[0]:
         hojas = []
         if corr_path is not None:
             try:
-                xls_corr = pd.ExcelFile(corr_path)
-                hojas = xls_corr.sheet_names
+               
+                hojas_dict = leer_archivo(uploaded_corr)
+                hojas = list(hojas_dict.keys())
+                
+                if not hojas:
+                    st.warning("No se encontraron hojas en el archivo subido.")
+                else:
+                    hoja_sel = st.selectbox("Selecciona hoja", options=hojas)
+                    df_original = hojas_dict[hoja_sel]
+
             except Exception as e:
                 st.error(f"No se pudieron leer las hojas del archivo: {e}")
                 hojas = []
@@ -1232,6 +1271,7 @@ if st.button("📦 Exportar TODOS los ajustes (gráficas + excels + collages)"):
                 collage.save(collage_path)
                 z.write(collage_path, arcname=f"{nombre_base}/{collage_path.name}")
                 
+            
             # ==========================================
             # 4) Gráficas de variables de proceso vs velocidad
             # ==========================================
@@ -1242,6 +1282,13 @@ if st.button("📦 Exportar TODOS los ajustes (gráficas + excels + collages)"):
             
             if not df_medias.empty:
                 columnas_vars = [c for c in df_medias.columns if c not in ["Segmento", "Velocidad (mm/año)"]]
+            
+                # ✅ Crear subcarpeta 'variables'
+                carpeta_variables = carpeta / "variables"
+                carpeta_variables.mkdir(exist_ok=True)
+            
+                imagenes_proceso = []
+            
                 for var in columnas_vars:
                     fig_proc, ax_proc = plt.subplots(figsize=(6, 4))
                     ax_proc.scatter(df_medias["Velocidad (mm/año)"], df_medias[var], alpha=0.7)
@@ -1249,10 +1296,35 @@ if st.button("📦 Exportar TODOS los ajustes (gráficas + excels + collages)"):
                     ax_proc.set_ylabel(var)
                     ax_proc.grid(True, alpha=0.4)
                     ax_proc.set_title(f"{var} vs Velocidad")
-                    proc_path = carpeta / f"{nombre_base}_{var}_vs_velocidad.png"
+                    
+                    proc_path = carpeta_variables / f"{var}_vs_velocidad.png"
                     fig_proc.savefig(proc_path, dpi=150, bbox_inches="tight")
                     plt.close(fig_proc)
-                    z.write(proc_path, arcname=f"{nombre_base}/{proc_path.name}")
+            
+                    try:
+                        imagenes_proceso.append(Image.open(proc_path))
+                    except:
+                        pass
+            
+                    # Añadir al ZIP con la ruta dentro de la carpeta 'variables'
+                    z.write(proc_path, arcname=f"{nombre_base}/variables/{proc_path.name}")
+            
+                # ✅ Collage de todas las gráficas de variables
+                if imagenes_proceso:
+                    cols = 2
+                    filas = math.ceil(len(imagenes_proceso) / cols)
+                    w, h = imagenes_proceso[0].size
+                    collage_proc = Image.new("RGB", (cols*w, filas*h), "white")
+            
+                    for n, img in enumerate(imagenes_proceso):
+                        fila = n // cols
+                        col = n % cols
+                        collage_proc.paste(img, (col*w, fila*h))
+            
+                    collage_proc_path = carpeta / f"{nombre_base}_collage_variables.png"
+                    collage_proc.save(collage_proc_path)
+                    z.write(collage_proc_path, arcname=f"{nombre_base}/{collage_proc_path.name}")
+
 
             # ==========================================
             # 5) Collage de todas las gráficas de proceso vs velocidad
