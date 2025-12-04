@@ -35,6 +35,21 @@ import pandas as pd
 import io
 
 import re
+def make_safe_name(text: str) -> str:
+    import re, unicodedata
+    text = (text or "").strip()
+
+    # Normaliza unicode (quita caracteres ocultos y acentos raros)
+    text = unicodedata.normalize("NFKD", text)
+
+    # Elimina todos los caracteres no permitidos en nombres de carpeta
+    text = re.sub(r'[\/\\:\*\?"<>\|\n\r\t]+', '', text)
+
+    # Reemplaza espacios por guiones bajos
+    text = text.replace(' ', '_')
+
+    # Evitar que quede vacío o demasiado largo
+    return text[:120] or "sin_nombre"
 
 def make_safe_slug(text: str, max_len: int = 120) -> str:
     """
