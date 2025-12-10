@@ -35,6 +35,64 @@ import pandas as pd
 import io
 
 import re
+
+def cargar_excel_proceso_robusto(path):
+    import pandas as pd
+    import numpy as np
+
+    NA_STRINGS = [
+        "[-11059] No Good Data For Calculation",
+        "[ -11059 ] No Good Data For Calculation",
+        "No Good Data For Calculation",
+        "No Good Data", "NO GOOD DATA",
+        "#DIV/0!", "#N/A", "#VALUE!",
+        "-", "nan", "NaN", "", " "
+    ]
+
+    raw = pd.read_excel(
+        path,
+        header=None,
+        dtype=str,
+        na_values=NA_STRINGS,
+        keep_default_na=True,
+        engine="openpyxl"
+    )
+
+    raw = raw.replace(NA_STRINGS, np.nan).astype(object)
+    raw = raw.dropna(how="all")
+
+    max_cols = max(raw.apply(lambda row: row.count(), axis=1))
+    raw = raw.reindex(columns=range(max_cols))
+    raw = raw.where(pd.notna(raw), np.nan)
+
+    def is_date_like(x):
+        try:
+            return pd.to_datetime(x, errors="coerce") is not pd.NaT
+        except:
+            return False
+
+    fila_inicio = None
+    for i, v in enumerate(raw.iloc[:,0].astype(str)):
+        if is_date_like(v):
+            fila_inicio = i
+            break
+
+    if fila_inicio is None:
+        raise ValueError("❌ No se encontró ninguna fila con fecha válida en la primera columna.")
+
+    tabla = raw.iloc[fila_inicio:].reset_index(drop=True)
+    tabla.columns = ["Fecha"] + [f"Var_{i}" for i in range(1, tabla.shape[1])]
+
+    tabla["Fecha"] = pd.to_datetime(tabla["Fecha"], errors="coerce")
+    tabla = tabla.dropna(subset=["Fecha"])
+
+    for c in tabla.columns:
+        if c != "Fecha":
+            tabla[c] = pd.to_numeric(tabla[c], errors="coerce")
+
+    tabla = tabla.dropna(how="all", subset=tabla.columns[1:])
+    return tabla
+
 def make_safe_name(text: str) -> str:
     import re, unicodedata
     text = (text or "").strip()
@@ -737,112 +795,12 @@ if uploaded_proc is not None:
         if cargar_datos_proceso_fn is not None:
             df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_proc_path)
         else:
-            # ====== LIMPIEZA DE VALORES "NO GOOD DATA" ======
-                NA_STRINGS = [
-                    "[-11059] No Good Data For Calculation",
-                    "[ -11059 ] No Good Data For Calculation",
-                    "No Good Data For Calculation",
-                    "No Good Data", "NO GOOD DATA",
-                    "#DIV/0!", "#N/A", "#VALUE!",
-                    "-", "nan", "NaN", "", " "
-                ]
-                
-                raw = pd.read_excel(
-                    tmp_proc_path,
-                    header=None,
-                    dtype=str,
-                    engine="openpyxl",
-                    na_values=NA_STRINGS,
-                    keep_default_na=True
-                )
-                
-                raw = raw.replace(NA_STRINGS, np.nan)
-                
-                # ====== DETECTAR FILA DE INICIO ======
-                def is_excel_serial(x):
-                    try:
-                        v = float(str(x).replace(",", "."))
-                        return 20000 <= v <= 50000
-                    except:
-                        return False
-                
-                def is_date_like(x):
-                    if is_excel_serial(x):
-                        return True
-                    try:
-                        v = pd.to_datetime([x], errors="coerce")
-                        return pd.notna(v.iloc[0])
-                    except:
-                        return False
-                
-                col0 = raw.iloc[:, 0].astype(str).fillna("")
-                
-                # Evitar aplicar funciones a objetos no válidos
-                cands = [
-                    i for i, v in enumerate(col0)
-                    if isinstance(v, str) and is_date_like(v)
-                ]
-
-                start = int(cands.min())
-                
-                data = raw.iloc[start:].reset_index(drop=True)
-                
-                # ====== NOMBRAR COLUMNAS ======
-                cols = ["Fecha"] + [f"Var_{i}" for i in range(1, data.shape[1])]
-                data.columns = cols[:data.shape[1]]
-                
-                # ====== CONVERTIR FECHA ======
-                fecha_str = data["Fecha"].astype(str)
-                fecha_num = pd.to_numeric(fecha_str.str.replace(",", ".", regex=False), errors="coerce")
-                
-                if (fecha_num.notna().sum() / len(data)) > 0.6:
-                    data["Fecha"] = pd.to_datetime(fecha_num, unit="d", origin="1899-12-30")
-                else:
-                    data["Fecha"] = pd.to_datetime(fecha_str, errors="coerce")
-                
-                data = data.dropna(subset=["Fecha"])  # << SALTAR FECHAS NULAS
-                
-                # ====== CONVERTIR VARIABLES A NUMÉRICAS ======
-                for c in data.columns:
-                    if c == "Fecha":  
-                        continue
-                    data[c] = pd.to_numeric(
-                        data[c].astype(str).str.replace(",", ".", regex=False),
-                        errors="coerce"
-                    )
-                
-                # ELIMINAR FILAS QUE NO TENGAN NADA VÁLIDO
-                cols_num = [c for c in data.columns if c != "Fecha"]
-                data = data.dropna(subset=cols_num, how="all")
-
+            df_proc = cargar_excel_proceso_robusto(tmp_proc_path)
+            vars_proceso = [c for c in df_proc.columns if c != "Fecha"]
+            st.session_state["df_proc"] = df_proc
+            st.session_state["vars_proceso"] = vars_proceso
             
-                # Convertir variables a numérico
-                for c in data.columns:
-                    if c == "Fecha": continue
-                    NA_STRINGS = [
-                        "[-11059] No Good Data For Calculation",
-                        "[ -11059 ] No Good Data For Calculation",
-                        "No Good Data For Calculation",
-                        "No Good Data", "NO GOOD DATA",
-                        "#DIV/0!", "#N/A", "#VALUE!",
-                        "-", "nan", "NaN", "", " "
-                    ]
-                    
-                    # Aplicar a todo el dataframe
-                    data = data.replace(NA_STRINGS, np.nan)
-
-                    data[c] = pd.to_numeric(data[c].astype(str).str.replace(",", ".", regex=False), errors="coerce")
-            
-                # Filtrar columnas con datos
-                var_cols = [c for c in data.columns if c != "Fecha" and data[c].notna().sum() > 0]
-            
-                # Guardar en sesión
-                df_proc = data[["Fecha"] + var_cols].sort_values("Fecha").reset_index(drop=True)
-                vars_proceso = var_cols
-                st.session_state["df_proc"] = df_proc
-                st.session_state["vars_proceso"] = vars_proceso
-                st.sidebar.success(f"Archivo de proceso cargado: {len(df_proc)} filas, {len(vars_proceso)} variables limpias.")
-
+            st.sidebar.success(f"Archivo de proceso cargado: {len(df_proc)} filas, {len(vars_proceso)} variables limpias.")
 
         fecha_col = None
         for c in df_proc.columns:
