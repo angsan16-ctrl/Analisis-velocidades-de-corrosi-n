@@ -37,35 +37,30 @@ import io
 import re
 
 def cargar_proceso_primera_hoja_limpio(path_excel):
-    # 1) Leer solo la PRIMERA hoja del Excel
-    df = pd.read_excel(path_excel, sheet_name=0)
 
-    # Normalizar nombres
-    df.columns = [str(c).strip() for c in df.columns]
+    # Leer primera hoja completa
+    df_raw = pd.read_excel(path_excel, sheet_name=0)
 
-    # 2) Detectar columna de fecha
-    col_fecha = None
+    # ❗ Tu archivo tiene cabeceras en las primeras 3 filas
+    # Los datos reales empiezan en la fila 3 (media) y 4 (desviación)
+    df = df_raw.iloc[3:].reset_index(drop=True)
+
+    # Rellenar nombres de columnas
+    df.columns = [f"Var_{i}" if "Unnamed" in str(c) else str(c) for i, c in enumerate(df_raw.columns)]
+
+    # Crear fecha artificial porque tu archivo NO la tiene
+    df["Fecha"] = pd.date_range(start="2000-01-01", periods=len(df), freq="D")
+
+    # Convertir todas las columnas a numérico excepto Fecha
     for c in df.columns:
-        if any(k in c.lower() for k in ["fecha", "date", "time"]):
-            col_fecha = c
-            break
-    if col_fecha is None:
-        col_fecha = df.columns[0]
+        if c != "Fecha":
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    # 3) Convertir a fecha
-    df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce")
-    df = df.dropna(subset=[col_fecha])
-
-    # 4) Convertir todo lo que NO sea válido → 0
-    for c in df.columns:
-        if c == col_fecha:
-            continue
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-
-    # 5) Variables numéricas de proceso
-    vars_proceso = [c for c in df.columns if c != col_fecha]
+    # Variables de proceso = todas menos Fecha
+    vars_proceso = [c for c in df.columns if c != "Fecha"]
 
     return df, vars_proceso
+
 
 def make_safe_name(text: str) -> str:
     import re, unicodedata
