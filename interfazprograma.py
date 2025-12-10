@@ -737,67 +737,93 @@ if uploaded_proc is not None:
         if cargar_datos_proceso_fn is not None:
             df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_proc_path)
         else:
-            # --- LECTURA ROBUSTA DEL ARCHIVO DE PROCESO ---
-            NA_STRINGS = [
-                "[-11059] No Good Data For Calculation",
-                "[ -11059 ] No Good Data For Calculation",
-                "No Good Data For Calculation",
-                "No Good Data", "NO GOOD DATA",
-                "#DIV/0!", "#N/A", "#VALUE!", "-", "nan", "NaN", ""
-            ]
-            
-            raw = pd.read_excel(
-                tmp_proc_path,
-                header=None,           # no asumimos cabeceras
-                dtype=str,
-                engine="openpyxl",
-                na_values=NA_STRINGS,
-                keep_default_na=True
-            )
-            
-            # Funciones seguras para detectar fecha
-            def is_excel_serial(x):
-                try:
-                    v = float(str(x).replace(",", "."))
-                    return 20000 <= v <= 50000  # rango serial Excel
-                except:
-                    return False
-            
-            def is_date_like(x):
-                if is_excel_serial(x):
-                    return True
-                try:
-                    v = pd.to_datetime([x], errors="coerce")
-                    return pd.notna(v.iloc[0])
-                except:
-                    return False
-            
-            # Localizar primera fila con fecha válida en la primera columna
-            cands = raw.index[raw.iloc[:, 0].astype(str).apply(is_date_like)]
-            if len(cands) == 0:
-                st.sidebar.error("No se encontró bloque con fechas en el archivo de proceso.")
-            else:
+            # ====== LIMPIEZA DE VALORES "NO GOOD DATA" ======
+                NA_STRINGS = [
+                    "[-11059] No Good Data For Calculation",
+                    "[ -11059 ] No Good Data For Calculation",
+                    "No Good Data For Calculation",
+                    "No Good Data", "NO GOOD DATA",
+                    "#DIV/0!", "#N/A", "#VALUE!",
+                    "-", "nan", "NaN", "", " "
+                ]
+                
+                raw = pd.read_excel(
+                    tmp_proc_path,
+                    header=None,
+                    dtype=str,
+                    engine="openpyxl",
+                    na_values=NA_STRINGS,
+                    keep_default_na=True
+                )
+                
+                raw = raw.replace(NA_STRINGS, np.nan)
+                
+                # ====== DETECTAR FILA DE INICIO ======
+                def is_excel_serial(x):
+                    try:
+                        v = float(str(x).replace(",", "."))
+                        return 20000 <= v <= 50000
+                    except:
+                        return False
+                
+                def is_date_like(x):
+                    if is_excel_serial(x):
+                        return True
+                    try:
+                        v = pd.to_datetime([x], errors="coerce")
+                        return pd.notna(v.iloc[0])
+                    except:
+                        return False
+                
+                cands = raw.index[raw.iloc[:, 0].astype(str).apply(is_date_like)]
                 start = int(cands.min())
+                
                 data = raw.iloc[start:].reset_index(drop=True)
-            
-                # Nombrar columnas
+                
+                # ====== NOMBRAR COLUMNAS ======
                 cols = ["Fecha"] + [f"Var_{i}" for i in range(1, data.shape[1])]
                 data.columns = cols[:data.shape[1]]
-            
-                # Convertir Fecha (serial Excel o texto)
+                
+                # ====== CONVERTIR FECHA ======
                 fecha_str = data["Fecha"].astype(str)
                 fecha_num = pd.to_numeric(fecha_str.str.replace(",", ".", regex=False), errors="coerce")
+                
                 if (fecha_num.notna().sum() / len(data)) > 0.6:
                     data["Fecha"] = pd.to_datetime(fecha_num, unit="d", origin="1899-12-30")
                 else:
                     data["Fecha"] = pd.to_datetime(fecha_str, errors="coerce")
-            
-                # Eliminar filas sin fecha válida
-                data = data.dropna(subset=["Fecha"])
+                
+                data = data.dropna(subset=["Fecha"])  # << SALTAR FECHAS NULAS
+                
+                # ====== CONVERTIR VARIABLES A NUMÉRICAS ======
+                for c in data.columns:
+                    if c == "Fecha":  
+                        continue
+                    data[c] = pd.to_numeric(
+                        data[c].astype(str).str.replace(",", ".", regex=False),
+                        errors="coerce"
+                    )
+                
+                # ELIMINAR FILAS QUE NO TENGAN NADA VÁLIDO
+                cols_num = [c for c in data.columns if c != "Fecha"]
+                data = data.dropna(subset=cols_num, how="all")
+
             
                 # Convertir variables a numérico
                 for c in data.columns:
                     if c == "Fecha": continue
+                    NA_STRINGS = [
+                        "[-11059] No Good Data For Calculation",
+                        "[ -11059 ] No Good Data For Calculation",
+                        "No Good Data For Calculation",
+                        "No Good Data", "NO GOOD DATA",
+                        "#DIV/0!", "#N/A", "#VALUE!",
+                        "-", "nan", "NaN", "", " "
+                    ]
+                    
+                    # Aplicar a todo el dataframe
+                    data = data.replace(NA_STRINGS, np.nan)
+
                     data[c] = pd.to_numeric(data[c].astype(str).str.replace(",", ".", regex=False), errors="coerce")
             
                 # Filtrar columnas con datos
