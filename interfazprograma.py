@@ -775,7 +775,14 @@ if uploaded_proc is not None:
                     except:
                         return False
                 
-                cands = raw.index[raw.iloc[:, 0].astype(str).apply(is_date_like)]
+                col0 = raw.iloc[:, 0].astype(str).fillna("")
+                
+                # Evitar aplicar funciones a objetos no válidos
+                cands = [
+                    i for i, v in enumerate(col0)
+                    if isinstance(v, str) and is_date_like(v)
+                ]
+
                 start = int(cands.min())
                 
                 data = raw.iloc[start:].reset_index(drop=True)
