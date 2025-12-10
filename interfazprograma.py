@@ -36,62 +36,36 @@ import io
 
 import re
 
-def cargar_excel_proceso_robusto(path):
-    import pandas as pd
-    import numpy as np
+def cargar_proceso_primera_hoja_limpio(path_excel):
+    # 1) Leer solo la PRIMERA hoja del Excel
+    df = pd.read_excel(path_excel, sheet_name=0)
 
-    NA_STRINGS = [
-        "[-11059] No Good Data For Calculation",
-        "[ -11059 ] No Good Data For Calculation",
-        "No Good Data For Calculation",
-        "No Good Data", "NO GOOD DATA",
-        "#DIV/0!", "#N/A", "#VALUE!",
-        "-", "nan", "NaN", "", " "
-    ]
+    # Normalizar nombres
+    df.columns = [str(c).strip() for c in df.columns]
 
-    raw = pd.read_excel(
-        path,
-        header=None,
-        dtype=str,
-        na_values=NA_STRINGS,
-        keep_default_na=True,
-        engine="openpyxl"
-    )
-
-    raw = raw.replace(NA_STRINGS, np.nan).astype(object)
-    raw = raw.dropna(how="all")
-
-    max_cols = max(raw.apply(lambda row: row.count(), axis=1))
-    raw = raw.reindex(columns=range(max_cols))
-    raw = raw.where(pd.notna(raw), np.nan)
-
-    def is_date_like(x):
-        try:
-            return pd.to_datetime(x, errors="coerce") is not pd.NaT
-        except:
-            return False
-
-    fila_inicio = None
-    for i, v in enumerate(raw.iloc[:,0].astype(str)):
-        if is_date_like(v):
-            fila_inicio = i
+    # 2) Detectar columna de fecha
+    col_fecha = None
+    for c in df.columns:
+        if any(k in c.lower() for k in ["fecha", "date", "time"]):
+            col_fecha = c
             break
+    if col_fecha is None:
+        col_fecha = df.columns[0]
 
-    if fila_inicio is None:
-        raise ValueError("❌ No se encontró ninguna fila con fecha válida en la primera columna.")
+    # 3) Convertir a fecha
+    df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce")
+    df = df.dropna(subset=[col_fecha])
 
-    tabla = raw.iloc[fila_inicio:].reset_index(drop=True)
-    tabla.columns = ["Fecha"] + [f"Var_{i}" for i in range(1, tabla.shape[1])]
+    # 4) Convertir todo lo que NO sea válido → 0
+    for c in df.columns:
+        if c == col_fecha:
+            continue
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    tabla["Fecha"] = pd.to_datetime(tabla["Fecha"], errors="coerce")
-    tabla = tabla.dropna(subset=["Fecha"])
+    # 5) Variables numéricas de proceso
+    vars_proceso = [c for c in df.columns if c != col_fecha]
 
-    for c in tabla.columns:
-        if c != "Fecha":
-            tabla[c] = pd.to_numeric(tabla[c], errors="coerce")
-
-    tabla = tabla.dropna(how="all", subset=tabla.columns[1:])
-    return tabla
+    return df, vars_proceso
 
 def make_safe_name(text: str) -> str:
     import re, unicodedata
@@ -795,12 +769,7 @@ if uploaded_proc is not None:
         if cargar_datos_proceso_fn is not None:
             df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_proc_path)
         else:
-            df_proc = cargar_excel_proceso_robusto(tmp_proc_path)
-            vars_proceso = [c for c in df_proc.columns if c != "Fecha"]
-            st.session_state["df_proc"] = df_proc
-            st.session_state["vars_proceso"] = vars_proceso
-            
-            st.sidebar.success(f"Archivo de proceso cargado: {len(df_proc)} filas, {len(vars_proceso)} variables limpias.")
+            df_proc, vars_proceso = cargar_proceso_primera_hoja_limpio(tmp_proc_path)
 
         fecha_col = None
         for c in df_proc.columns:
