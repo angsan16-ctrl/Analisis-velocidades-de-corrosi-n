@@ -138,7 +138,7 @@ def leer_archivo(uploaded_file):
 
 # Configuración básica y estilo
 st.set_page_config(page_title="Analizador de corrosión", layout="wide")
-st.markdown("<h1 class='darkblue-title'>Analísis de corrosión</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='darkblue-title'>Análisis de corrosión</h1>", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
@@ -223,6 +223,22 @@ h1, h2, h3, h4, h5, h6 {
 """, unsafe_allow_html=True)
 
 # intentar cargar logo
+try:
+    logo_original = Image.open("logo_repsol.png").convert("RGBA")
+    blur_radius = 20
+    padding = blur_radius * 5
+    new_size = (logo_original.width + padding, logo_original.height + padding)
+    final_logo = Image.new("RGBA", new_size, (0, 0, 0, 0))
+    center_x = (new_size[0] - logo_original.width) // 2
+    center_y = (new_size[1] - logo_original.height) // 2
+    final_logo.paste(logo_original, (center_x, center_y), logo_original)
+    mask = final_logo.split()[3]
+    white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
+    white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
+    final_logo = Image.alpha_composite(white_halo, final_logo)
+    st.image(final_logo, width=200)
+except Exception:
+    st.write("⚠️ No se encontró 'logo_repsol.png' o no se pudo procesarlo.")
 
 HERE = Path.cwd()
 
@@ -766,6 +782,26 @@ if uploaded_proc is not None:
             df_proc, vars_proceso = cargar_datos_proceso_fn(tmp_proc_path)
         else:
             df_proc, vars_proceso = cargar_proceso_primera_hoja_limpio(tmp_proc_path)
+            # -------------------------------------------------------
+            # 🔧 LIMPIEZA GLOBAL PARA EVITAR EL ERROR DEL EXCEL
+            # -------------------------------------------------------
+            
+            # Convertir todo primero a string (para evitar objetos raros)
+            df_proc = df_proc.applymap(
+                lambda x: str(x).strip() if not isinstance(x, float) and not pd.isna(x) else x
+            )
+            
+            # Reemplazar strings vacíos y símbolos por NaN real
+            df_proc = df_proc.replace(
+                ["nan", "NaN", "None", "<NA>", "N/A", "NA", "", " "],
+                np.nan
+            )
+            
+            # Asegurar que ninguna celda sea array/lista/objeto → si lo es, poner NaN
+            for c in df_proc.columns:
+                df_proc[c] = df_proc[c].apply(
+                    lambda x: x if isinstance(x, (str, float, int, np.number)) or pd.isna(x) else np.nan
+                )
 
         fecha_col = None
         for c in df_proc.columns:
