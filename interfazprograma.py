@@ -503,7 +503,26 @@ def extraer_segmentos_validos_fallback(df_filtrado, y_suave, segmentos_raw, df_p
                     (df_proc[fecha_col] >= fecha_ini - pd.Timedelta(days=1))
                     & (df_proc[fecha_col] <= fecha_fin + pd.Timedelta(days=1))
                 ]
+                
+                # --- 🔧 Limpieza robusta ANTES de calcular medias ---
+                
+                # 1. Convertir a numérico todo lo que debe ser numérico
+                for col in sub.columns:
+                    if col != "Fecha":
+                        sub[col] = pd.to_numeric(sub[col], errors="coerce")
+                
+                # 2. Quedarse solo con columnas numéricas + Fecha
+                cols_num = [c for c in sub.columns if c != "Fecha" and pd.api.types.is_numeric_dtype(sub[c])]
+                sub = sub[ ["Fecha"] + cols_num ]
+                
+                # 3. Eliminar cualquier celda que sea lista/array/dict/objeto raro
+                sub = sub.applymap(
+                    lambda x: x if isinstance(x, (int, float)) or pd.isna(x) else np.nan
+                )
+                
+                # Finalmente, calcular medias
                 medias = sub.mean(numeric_only=True)
+
             except Exception:
                 medias = pd.Series(dtype=float)
 
